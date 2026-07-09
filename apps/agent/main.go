@@ -1,15 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"time"
+
+	"github.com/sepatusendal/brio-remote/agent/internal/device"
 
 	"github.com/gorilla/websocket"
 )
 
 func main() {
 
-	log.Println("Brio Agent v0.1")
+	log.Println("Brio Agent v0.2")
+
+	info := device.New()
 
 	conn, _, err := websocket.DefaultDialer.Dial(
 		"ws://localhost:3000",
@@ -17,7 +22,7 @@ func main() {
 	)
 
 	if err != nil {
-		log.Fatal("Server tidak aktif:", err)
+		log.Fatal(err)
 	}
 
 	defer conn.Close()
@@ -26,23 +31,26 @@ func main() {
 
 	for {
 
-		message := `{
-			"type":"HEARTBEAT",
-			"device":"BRIO-TEST"
-		}`
-
-		err := conn.WriteMessage(
-			websocket.TextMessage,
-			[]byte(message),
-		)
-
-		if err != nil {
-			log.Println(err)
-			break
+		payload := map[string]any{
+			"type":      "HEARTBEAT",
+			"deviceId":  info.DeviceID,
+			"hostname":  info.Hostname,
+			"os":        info.OS,
+			"arch":      info.Arch,
+			"timestamp": time.Now().Unix(),
 		}
 
-		log.Println("Heartbeat sent")
+		data, _ := json.Marshal(payload)
+
+		conn.WriteMessage(
+			websocket.TextMessage,
+			data,
+		)
+
+		log.Println("Heartbeat")
 
 		time.Sleep(5 * time.Second)
+
 	}
+
 }

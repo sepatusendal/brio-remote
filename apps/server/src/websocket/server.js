@@ -1,35 +1,26 @@
 import { WebSocketServer } from "ws";
+import { updateDevice } from "../devices/registry.js";
 
 export class BrioSocket {
+  constructor(server) {
+    this.wss = new WebSocketServer({
+      server,
+    });
 
-    constructor(server){
+    console.log("✅ WebSocket initialized");
 
-        this.wss = new WebSocketServer({
-            server
-        });
+    this.wss.on("connection", (ws, req) => {
+      console.log("🟢 NEW CONNECTION");
 
-        console.log("✅ WebSocket initialized");
+      ws.on("message", (msg) => {
+        const data = JSON.parse(msg.toString());
 
-        this.wss.on("connection",(ws,req)=>{
+        if (data.type === "HEARTBEAT") {
+          const device = updateDevice(data);
 
-            console.log("🟢 NEW CONNECTION");
-
-            console.log(req.socket.remoteAddress);
-
-            ws.on("message",(msg)=>{
-
-                console.log("📩",msg.toString());
-
-            });
-
-            ws.on("close",()=>{
-
-                console.log("❌ CLOSED");
-
-            });
-
-        });
-
-    }
-
+          console.log("DEVICE ONLINE", device.hostname);
+        }
+      });
+    });
+  }
 }
