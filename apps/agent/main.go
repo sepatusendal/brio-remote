@@ -9,25 +9,31 @@ import (
 
 func main() {
 
-	log.Println("===================================")
-	log.Println(" Brio Agent v0.1")
-	log.Println("===================================")
+	log.Println("Brio Agent v0.1")
 
-	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:3000", nil)
+	conn, _, err := websocket.DefaultDialer.Dial(
+		"ws://localhost:3000",
+		nil,
+	)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Server tidak aktif:", err)
 	}
 
 	defer conn.Close()
 
-	log.Println("Connected to Brio Server")
+	log.Println("Connected")
 
 	for {
 
+		message := `{
+			"type":"HEARTBEAT",
+			"device":"BRIO-TEST"
+		}`
+
 		err := conn.WriteMessage(
 			websocket.TextMessage,
-			[]byte(`{"type":"heartbeat"}`),
+			[]byte(message),
 		)
 
 		if err != nil {
@@ -38,7 +44,5 @@ func main() {
 		log.Println("Heartbeat sent")
 
 		time.Sleep(5 * time.Second)
-
 	}
-
 }

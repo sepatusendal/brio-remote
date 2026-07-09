@@ -1,21 +1,21 @@
-import express from 'express';
-import cors from 'cors';
-import { WebSocketServer } from './websocket/server.js';
+import express from "express";
+import http from "http";
+import cors from "cors";
+import { BrioSocket } from "./websocket/server.js";
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (req,res)=>{
-  res.json({
-    service:'brio-server',
-    status:'ok'
-  });
+app.get("/health", (req, res) => {
+    res.json({ ok: true });
 });
 
-const server = app.listen(3000, ()=>{
-  console.log('Brio Server running on port 3000');
-});
+const server = http.createServer(app);
 
-new WebSocketServer(server);
+new BrioSocket(server);
+
+server.listen(3000, () => {
+    console.log("🚀 Brio Server running on :3000");
+});

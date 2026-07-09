@@ -1,20 +1,35 @@
-import { WebSocketServer as WS } from 'ws';
+import { WebSocketServer } from "ws";
 
-export class WebSocketServer {
-  constructor(server){
-    this.wss = new WS({server});
+export class BrioSocket {
 
-    this.wss.on('connection',(socket)=>{
-      console.log('WebSocket client connected');
+    constructor(server){
 
-      socket.on('message',(data)=>{
-        console.log('Message:', data.toString());
-      });
+        this.wss = new WebSocketServer({
+            server
+        });
 
-      socket.send(JSON.stringify({
-        type:'CONNECTED',
-        message:'Welcome to Brio'
-      }));
-    });
-  }
+        console.log("✅ WebSocket initialized");
+
+        this.wss.on("connection",(ws,req)=>{
+
+            console.log("🟢 NEW CONNECTION");
+
+            console.log(req.socket.remoteAddress);
+
+            ws.on("message",(msg)=>{
+
+                console.log("📩",msg.toString());
+
+            });
+
+            ws.on("close",()=>{
+
+                console.log("❌ CLOSED");
+
+            });
+
+        });
+
+    }
+
 }
