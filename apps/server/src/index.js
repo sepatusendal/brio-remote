@@ -1,7 +1,7 @@
 import express from "express";
 import http from "http";
 import cors from "cors";
-import { BrioSocket, clients, devices } from "./websocket/server.js";
+import { BrioSocket, devices } from "./websocket/server.js";
 
 
 const app = express();
@@ -27,37 +27,9 @@ app.get("/devices",(req,res)=>{
 
 });
 
-
-app.post("/connect",(req,res)=>{
-
-    const socket = clients.get(
-        req.body.deviceId
-    );
-
-
-    if(!socket){
-
-        return res.json({
-            ok:false
-        });
-
-    }
-
-
-    socket.send(JSON.stringify({
-
-        type:"PING"
-
-    }));
-
-
-    res.json({
-        ok:true
-    });
-
-
-});
-
+// NOTE: session negotiation (connect/control/streaming) now happens entirely
+// over the WebSocket protocol (VIEWER_HELLO / CONNECT_REQUEST / INPUT). The
+// old REST /connect endpoint only ever sent a bare PING and is removed.
 
 
 const server = http.createServer(app);
@@ -65,11 +37,12 @@ const server = http.createServer(app);
 
 new BrioSocket(server);
 
+const PORT = process.env.PORT || 3000;
 
-server.listen(3000,()=>{
+server.listen(PORT,()=>{
 
     console.log(
-        "🚀 Brio Server running :3000"
+        `🚀 Brio Server running :${PORT}`
     );
 
 });
