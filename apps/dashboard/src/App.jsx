@@ -2,9 +2,14 @@ import { useMemo, useState } from "react";
 import { useBrioSocket } from "./hooks/useBrioSocket";
 import DeviceCard from "./components/DeviceCard";
 import CommandCenter from "./components/CommandCenter";
+import AccessGate from "./components/AccessGate";
 import "./App.css";
 
+const TOKEN_KEY = "brio_operator_token";
+
 export default function App() {
+
+    const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
 
     const {
         connected,
@@ -12,14 +17,35 @@ export default function App() {
         session,
         activityLog,
         screenshot,
+        authError,
+        statsHistory,
+        processes,
+        execLines,
+        execRunning,
+        fileList,
+        fileTransfer,
         requestConnect,
         endSession,
         sendInput,
         startStream,
         stopStream,
         requestScreenshot,
+        requestProcessList,
+        killProcess,
+        execCommand,
+        requestFilesList,
+        downloadFile,
+        uploadFile,
+        deleteFile,
+        renameFile,
+        makeDirectory,
         onStreamFrame,
-    } = useBrioSocket();
+    } = useBrioSocket(token);
+
+    function handleTokenSubmit(value) {
+        localStorage.setItem(TOKEN_KEY, value);
+        setToken(value);
+    }
 
     const [query, setQuery] = useState("");
 
@@ -42,6 +68,14 @@ export default function App() {
 
     const onlineCount = devices.filter((d) => d.online).length;
 
+    if (!token || authError) {
+        return (
+            <div className="view-transition">
+                <AccessGate onSubmit={handleTokenSubmit} error={authError} />
+            </div>
+        );
+    }
+
     if (session?.status === "active") {
         const device = devices.find((d) => d.deviceId === session.deviceId) || { deviceId: session.deviceId };
 
@@ -51,11 +85,26 @@ export default function App() {
                     device={device}
                     activityLog={activityLog}
                     screenshot={screenshot}
+                    statsHistory={statsHistory}
+                    processes={processes}
+                    execLines={execLines}
+                    execRunning={execRunning}
+                    execCommand={execCommand}
+                    fileList={fileList}
+                    fileTransfer={fileTransfer}
+                    requestFilesList={requestFilesList}
+                    downloadFile={downloadFile}
+                    uploadFile={uploadFile}
+                    deleteFile={deleteFile}
+                    renameFile={renameFile}
+                    makeDirectory={makeDirectory}
                     sendInput={sendInput}
                     onStreamFrame={onStreamFrame}
                     startStream={startStream}
                     stopStream={stopStream}
                     requestScreenshot={requestScreenshot}
+                    requestProcessList={requestProcessList}
+                    killProcess={killProcess}
                     onClose={endSession}
                 />
             </div>

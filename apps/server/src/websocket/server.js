@@ -1,5 +1,19 @@
 import { WebSocketServer } from "ws";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
+
+// Operator access token. Only the dashboard (viewer) needs to present this —
+// agents don't, because running an agent on a machine already requires
+// access to that machine. The real security boundary is "who can open a
+// control session and send input/commands", which is the viewer side.
+export const ACCESS_TOKEN = process.env.BRIO_TOKEN || randomBytes(9).toString("base64url");
+
+if (!process.env.BRIO_TOKEN) {
+    console.log("");
+    console.log("🔑 No BRIO_TOKEN set — generated one for this run:");
+    console.log(`   ${ACCESS_TOKEN}`);
+    console.log("   Enter this in the dashboard to unlock it. Set BRIO_TOKEN env var to pin a fixed token.");
+    console.log("");
+}
 
 // deviceId -> device metadata (used by /devices REST + broadcast to viewers)
 export const devices = new Map();
@@ -67,13 +81,23 @@ export class BrioSocket {
 
             ws.on("message", (message, isBinary) => {
 
-                // Binary frames only ever come from an agent mid-session: relay to its paired viewer.
+                // Binary frames flow both ways now: agent->viewer for screen
+                // frames/screenshots/file downloads, viewer->agent for file
+                // uploads. Just relay to whoever is on the other end of the
+                // pairing — the payload's own tag byte tells the receiver
+                // what kind of frame it is.
                 if (isBinary) {
                     if (ws.role === "agent" && ws.deviceId) {
                         const viewerId = sessionsByDevice.get(ws.deviceId);
                         const viewerWs = viewerId && viewerSockets.get(viewerId);
                         if (viewerWs && viewerWs.readyState === viewerWs.OPEN) {
                             viewerWs.send(message, { binary: true });
+                        }
+                    } else if (ws.role === "viewer" && ws.viewerId) {
+                        const deviceId = sessionsByViewer.get(ws.viewerId);
+                        const agentWs = deviceId && agentSockets.get(deviceId);
+                        if (agentWs && agentWs.readyState === agentWs.OPEN) {
+                            agentWs.send(message, { binary: true });
                         }
                     }
                     return;
@@ -111,6 +135,12 @@ export class BrioSocket {
                     }
 
                     case "VIEWER_HELLO": {
+
+                        if (data.token !== ACCESS_TOKEN) {
+                            safeSend(ws, { type: "AUTH_FAILED", reason: "Invalid access token" });
+                            ws.close();
+                            return;
+                        }
 
                         ws.role = "viewer";
                         ws.viewerId = randomUUID();
@@ -165,7 +195,8 @@ export class BrioSocket {
 
                     case "STREAM_START":
                     case "STREAM_STOP":
-                    case "SCREENSHOT_REQUEST": {
+                    case "SCREENSHOT_REQUEST":
+                    case "PROCESS_LIST_REQUEST": {
 
                         if (ws.role !== "viewer") return;
 
@@ -173,6 +204,62 @@ export class BrioSocket {
                         const agentWs = deviceId && agentSockets.get(deviceId);
 
                         if (agentWs) safeSend(agentWs, { type: data.type });
+                        break;
+                    }
+
+                    case "PROCESS_KILL": {
+
+                        if (ws.role !== "viewer") return;
+
+                        const deviceId = sessionsByViewer.get(ws.viewerId);
+                        const agentWs = deviceId && agentSockets.get(deviceId);
+
+                        if (agentWs) safeSend(agentWs, { type: "PROCESS_KILL", pid: data.pid });
+                        break;
+                    }
+
+                    case "EXEC_REQUEST": {
+
+                        if (ws.role !== "viewer") return;
+
+                        const deviceId = sessionsByViewer.get(ws.viewerId);
+                        const agentWs = deviceId && agentSockets.get(deviceId);
+
+                        if (agentWs) safeSend(agentWs, { type: "EXEC_REQUEST", command: data.command });
+                        break;
+                    }
+
+                    case "FILES_LIST_REQUEST":
+                    case "FILE_DOWNLOAD_REQUEST":
+                    case "FILE_UPLOAD_START":
+                    case "FILE_DELETE":
+                    case "FILE_RENAME":
+                    case "FILE_MKDIR": {
+
+                        if (ws.role !== "viewer") return;
+
+                        const deviceId = sessionsByViewer.get(ws.viewerId);
+                        const agentWs = deviceId && agentSockets.get(deviceId);
+
+                        if (agentWs) safeSend(agentWs, data);
+                        break;
+                    }
+
+                    case "STATS":
+                    case "PROCESS_LIST":
+                    case "PROCESS_KILL_RESULT":
+                    case "EXEC_OUTPUT":
+                    case "EXEC_DONE":
+                    case "FILES_LIST":
+                    case "FILE_DOWNLOAD_START":
+                    case "FILE_OP_RESULT": {
+
+                        if (ws.role !== "agent" || !ws.deviceId) return;
+
+                        const viewerId = sessionsByDevice.get(ws.deviceId);
+                        const viewerWs = viewerId && viewerSockets.get(viewerId);
+
+                        if (viewerWs) safeSend(viewerWs, data);
                         break;
                     }
 

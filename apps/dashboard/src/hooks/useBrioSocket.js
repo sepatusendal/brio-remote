@@ -5,13 +5,35 @@ const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3000";
 // Must match the tag bytes the Go agent prefixes onto binary frames.
 const FRAME_TYPE_STREAM = 0x01;
 const FRAME_TYPE_SCREENSHOT = 0x02;
+const FRAME_TYPE_FILE_DOWN = 0x03;
+const FRAME_TYPE_FILE_UP = 0x04;
 
 let logSeq = 0;
+let execSeq = 0;
 
-export function useBrioSocket() {
+function sendTaggedBinary(ws, tag, arrayBuffer) {
+    const out = new Uint8Array(arrayBuffer.byteLength + 1);
+    out[0] = tag;
+    out.set(new Uint8Array(arrayBuffer), 1);
+    ws.send(out.buffer);
+}
+
+function triggerBrowserDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+export function useBrioSocket(token) {
 
     const wsRef = useRef(null);
     const streamHandlerRef = useRef(null);
+    const pendingDownloadRef = useRef(null); // { filename, size } set by FILE_DOWNLOAD_START
 
     const [connected, setConnected] = useState(false);
     const [viewerId, setViewerId] = useState(null);
@@ -20,6 +42,13 @@ export function useBrioSocket() {
     const [session, setSession] = useState(null);
     const [activityLog, setActivityLog] = useState([]);
     const [screenshot, setScreenshot] = useState(null); // object URL of last screenshot
+    const [authError, setAuthError] = useState(null);
+    const [statsHistory, setStatsHistory] = useState([]); // rolling buffer of {cpuPercent, memPercent, memUsedMB, memTotalMB, ts}
+    const [processes, setProcesses] = useState([]);
+    const [execLines, setExecLines] = useState([]);
+    const [execRunning, setExecRunning] = useState(false);
+    const [fileList, setFileList] = useState(null); // { path, entries }
+    const [fileTransfer, setFileTransfer] = useState(null); // { kind: 'download'|'upload', name } | null
 
     const pushLog = useCallback((label) => {
         setActivityLog((prev) => [
@@ -30,13 +59,16 @@ export function useBrioSocket() {
 
     useEffect(() => {
 
+        if (!token) return undefined;
+
         const ws = new WebSocket(WS_URL);
         ws.binaryType = "arraybuffer";
         wsRef.current = ws;
 
         ws.onopen = () => {
             setConnected(true);
-            ws.send(JSON.stringify({ type: "VIEWER_HELLO" }));
+            setAuthError(null);
+            ws.send(JSON.stringify({ type: "VIEWER_HELLO", token }));
         };
 
         ws.onclose = () => setConnected(false);
@@ -60,6 +92,13 @@ export function useBrioSocket() {
                         return URL.createObjectURL(blob);
                     });
                     pushLog("Screenshot captured");
+                } else if (tag === FRAME_TYPE_FILE_DOWN) {
+                    const meta = pendingDownloadRef.current;
+                    const blob = new Blob([payload]);
+                    triggerBrowserDownload(blob, meta?.filename);
+                    pushLog(`Downloaded ${meta?.filename || "file"}`);
+                    setFileTransfer(null);
+                    pendingDownloadRef.current = null;
                 }
                 return;
             }
@@ -72,6 +111,10 @@ export function useBrioSocket() {
             }
 
             switch (msg.type) {
+
+                case "AUTH_FAILED":
+                    setAuthError(msg.reason || "Invalid access token");
+                    break;
 
                 case "VIEWER_ID":
                     setViewerId(msg.viewerId);
@@ -95,6 +138,57 @@ export function useBrioSocket() {
                     pushLog(msg.reason || "Session ended");
                     break;
 
+                case "STATS":
+                    setStatsHistory((prev) => [
+                        ...prev,
+                        {
+                            cpuPercent: msg.cpuPercent,
+                            memPercent: msg.memPercent,
+                            memUsedMB: msg.memUsedMB,
+                            memTotalMB: msg.memTotalMB,
+                            ts: Date.now(),
+                        },
+                    ].slice(-30));
+                    break;
+
+                case "PROCESS_LIST":
+                    setProcesses(msg.processes || []);
+                    break;
+
+                case "PROCESS_KILL_RESULT":
+                    pushLog(msg.ok ? `Killed process ${msg.pid}` : `Failed to kill ${msg.pid}: ${msg.error}`);
+                    break;
+
+                case "EXEC_OUTPUT":
+                    setExecLines((prev) => [
+                        ...prev,
+                        { id: ++execSeq, kind: msg.stream === "stderr" ? "stderr" : "stdout", text: msg.line },
+                    ]);
+                    break;
+
+                case "EXEC_DONE":
+                    setExecRunning(false);
+                    if (msg.exitCode !== 0) {
+                        setExecLines((prev) => [
+                            ...prev,
+                            { id: ++execSeq, kind: "exit", text: `exit ${msg.exitCode}` },
+                        ]);
+                    }
+                    break;
+
+                case "FILES_LIST":
+                    setFileList({ path: msg.path, entries: msg.entries || [] });
+                    break;
+
+                case "FILE_DOWNLOAD_START":
+                    pendingDownloadRef.current = { filename: msg.filename, size: msg.size };
+                    break;
+
+                case "FILE_OP_RESULT":
+                    setFileTransfer(null);
+                    if (!msg.ok) pushLog(`File operation failed: ${msg.error}`);
+                    break;
+
                 default:
                     break;
             }
@@ -102,12 +196,18 @@ export function useBrioSocket() {
 
         return () => ws.close();
 
-    }, [pushLog]);
+    }, [pushLog, token]);
 
     const requestConnect = useCallback((deviceId) => {
         setSession({ deviceId, status: "connecting" });
         setActivityLog([]);
         setScreenshot(null);
+        setStatsHistory([]);
+        setProcesses([]);
+        setExecLines([]);
+        setExecRunning(false);
+        setFileList(null);
+        setFileTransfer(null);
         wsRef.current?.send(JSON.stringify({ type: "CONNECT_REQUEST", deviceId }));
     }, []);
 
@@ -135,6 +235,54 @@ export function useBrioSocket() {
         pushLog("Screenshot requested");
     }, [pushLog]);
 
+    const requestProcessList = useCallback(() => {
+        wsRef.current?.send(JSON.stringify({ type: "PROCESS_LIST_REQUEST" }));
+    }, []);
+
+    const killProcess = useCallback((pid) => {
+        wsRef.current?.send(JSON.stringify({ type: "PROCESS_KILL", pid }));
+    }, []);
+
+    const execCommand = useCallback((command) => {
+        setExecLines((prev) => [...prev, { id: ++execSeq, kind: "command", text: command }]);
+        setExecRunning(true);
+        wsRef.current?.send(JSON.stringify({ type: "EXEC_REQUEST", command }));
+    }, []);
+
+    const requestFilesList = useCallback((path) => {
+        wsRef.current?.send(JSON.stringify({ type: "FILES_LIST_REQUEST", path: path || "" }));
+    }, []);
+
+    const downloadFile = useCallback((path) => {
+        setFileTransfer({ kind: "download", name: path.split("/").pop() });
+        wsRef.current?.send(JSON.stringify({ type: "FILE_DOWNLOAD_REQUEST", path }));
+    }, []);
+
+    const uploadFile = useCallback((path, file) => {
+        setFileTransfer({ kind: "upload", name: file.name });
+        wsRef.current?.send(JSON.stringify({ type: "FILE_UPLOAD_START", path }));
+
+        file.arrayBuffer().then((buf) => {
+            if (wsRef.current) sendTaggedBinary(wsRef.current, FRAME_TYPE_FILE_UP, buf);
+            pushLog(`Uploaded ${file.name}`);
+        });
+    }, [pushLog]);
+
+    const deleteFile = useCallback((path) => {
+        wsRef.current?.send(JSON.stringify({ type: "FILE_DELETE", path }));
+        pushLog(`Deleted ${path.split("/").pop()}`);
+    }, [pushLog]);
+
+    const renameFile = useCallback((path, newName) => {
+        wsRef.current?.send(JSON.stringify({ type: "FILE_RENAME", path, newName }));
+        pushLog(`Renamed to ${newName}`);
+    }, [pushLog]);
+
+    const makeDirectory = useCallback((path, name) => {
+        wsRef.current?.send(JSON.stringify({ type: "FILE_MKDIR", path, name }));
+        pushLog(`Created folder ${name}`);
+    }, [pushLog]);
+
     const onStreamFrame = useCallback((handler) => {
         streamHandlerRef.current = handler;
     }, []);
@@ -146,12 +294,28 @@ export function useBrioSocket() {
         session,
         activityLog,
         screenshot,
+        authError,
+        statsHistory,
+        processes,
+        execLines,
+        execRunning,
+        fileList,
+        fileTransfer,
         requestConnect,
         endSession,
         sendInput,
         startStream,
         stopStream,
         requestScreenshot,
+        requestProcessList,
+        killProcess,
+        execCommand,
+        requestFilesList,
+        downloadFile,
+        uploadFile,
+        deleteFile,
+        renameFile,
+        makeDirectory,
         onStreamFrame,
     };
 }

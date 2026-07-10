@@ -1,5 +1,9 @@
 import { useState } from "react";
 import ScreenPanel from "./ScreenPanel";
+import SystemMonitor from "./SystemMonitor";
+import ProcessManager from "./ProcessManager";
+import Terminal from "./Terminal";
+import FileManager from "./FileManager";
 import { useNow } from "../hooks/useNow";
 
 const TABS = [
@@ -33,11 +37,26 @@ export default function CommandCenter({
     device,
     activityLog,
     screenshot,
+    statsHistory,
+    processes,
+    execLines,
+    execRunning,
+    execCommand,
+    fileList,
+    fileTransfer,
+    requestFilesList,
+    downloadFile,
+    uploadFile,
+    deleteFile,
+    renameFile,
+    makeDirectory,
     sendInput,
     onStreamFrame,
     startStream,
     stopStream,
     requestScreenshot,
+    requestProcessList,
+    killProcess,
     onClose,
 }) {
 
@@ -87,6 +106,11 @@ export default function CommandCenter({
                         </div>
 
                         <div className="cc-panel">
+                            <h3 className="cc-panel__title">Live system monitor</h3>
+                            <SystemMonitor history={statsHistory} />
+                        </div>
+
+                        <div className="cc-panel">
                             <div className="cc-panel__row">
                                 <h3 className="cc-panel__title">Screenshot</h3>
                                 <button className="cc-action" onClick={requestScreenshot}>📷 Screenshot</button>
@@ -118,23 +142,31 @@ export default function CommandCenter({
                 )}
 
                 {tab === "terminal" && (
-                    <ComingSoon
-                        title="Remote terminal"
-                        blurb="Run pwd, ls, whoami and see output stream back in realtime. Needs a new command-execution channel on the agent — next sprint."
+                    <Terminal
+                        execLines={execLines}
+                        execRunning={execRunning}
+                        execCommand={execCommand}
                     />
                 )}
 
                 {tab === "files" && (
-                    <ComingSoon
-                        title="File manager"
-                        blurb="Browse, upload, download, rename, and delete files on the remote device."
+                    <FileManager
+                        fileList={fileList}
+                        fileTransfer={fileTransfer}
+                        requestFilesList={requestFilesList}
+                        downloadFile={downloadFile}
+                        uploadFile={uploadFile}
+                        deleteFile={deleteFile}
+                        renameFile={renameFile}
+                        makeDirectory={makeDirectory}
                     />
                 )}
 
                 {tab === "processes" && (
-                    <ComingSoon
-                        title="Process manager"
-                        blurb="See what's running on the device and kill processes remotely, task-manager style."
+                    <ProcessManager
+                        processes={processes}
+                        requestProcessList={requestProcessList}
+                        killProcess={killProcess}
                     />
                 )}
 
