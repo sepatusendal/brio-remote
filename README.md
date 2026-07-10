@@ -1,5 +1,7 @@
 # Brio Remote — Milestone 3: Screen Share & Remote Control
 
+**Made by Wira Mode Pohon**
+
 An AnyDesk-style remote access tool: a Go agent runs on the target machine,
 a Node/Express + WebSocket server relays sessions, and a React dashboard
 lets a viewer watch and control a connected device.
@@ -54,5 +56,13 @@ cd apps/agent
 go mod tidy             # fetches kbinani/screenshot + go-vgo/robotgo
 go run main.go
 ```
+
+## Remote access from outside your WiFi
+
+See [`docs/TAILSCALE.md`](docs/TAILSCALE.md) — free, no port forwarding,
+no domain, no TLS setup, and the server never touches the public
+internet. This is the recommended way to reach Brio from your phone or
+another network, given how much access the Terminal/File Manager tabs
+grant.
 
 See `docs/NEXT.md` for the roadmap.

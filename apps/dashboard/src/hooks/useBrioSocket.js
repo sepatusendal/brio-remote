@@ -7,9 +7,10 @@ const FRAME_TYPE_STREAM = 0x01;
 const FRAME_TYPE_SCREENSHOT = 0x02;
 const FRAME_TYPE_FILE_DOWN = 0x03;
 const FRAME_TYPE_FILE_UP = 0x04;
+const FRAME_TYPE_TERM_OUT = 0x05;
+const FRAME_TYPE_TERM_IN = 0x06;
 
 let logSeq = 0;
-let execSeq = 0;
 
 function sendTaggedBinary(ws, tag, arrayBuffer) {
     const out = new Uint8Array(arrayBuffer.byteLength + 1);
@@ -33,6 +34,7 @@ export function useBrioSocket(token) {
 
     const wsRef = useRef(null);
     const streamHandlerRef = useRef(null);
+    const termOutputHandlerRef = useRef(null);
     const pendingDownloadRef = useRef(null); // { filename, size } set by FILE_DOWNLOAD_START
 
     const [connected, setConnected] = useState(false);
@@ -45,8 +47,6 @@ export function useBrioSocket(token) {
     const [authError, setAuthError] = useState(null);
     const [statsHistory, setStatsHistory] = useState([]); // rolling buffer of {cpuPercent, memPercent, memUsedMB, memTotalMB, ts}
     const [processes, setProcesses] = useState([]);
-    const [execLines, setExecLines] = useState([]);
-    const [execRunning, setExecRunning] = useState(false);
     const [fileList, setFileList] = useState(null); // { path, entries }
     const [fileTransfer, setFileTransfer] = useState(null); // { kind: 'download'|'upload', name } | null
 
@@ -99,6 +99,8 @@ export function useBrioSocket(token) {
                     pushLog(`Downloaded ${meta?.filename || "file"}`);
                     setFileTransfer(null);
                     pendingDownloadRef.current = null;
+                } else if (tag === FRAME_TYPE_TERM_OUT) {
+                    termOutputHandlerRef.current?.(payload);
                 }
                 return;
             }
@@ -159,23 +161,6 @@ export function useBrioSocket(token) {
                     pushLog(msg.ok ? `Killed process ${msg.pid}` : `Failed to kill ${msg.pid}: ${msg.error}`);
                     break;
 
-                case "EXEC_OUTPUT":
-                    setExecLines((prev) => [
-                        ...prev,
-                        { id: ++execSeq, kind: msg.stream === "stderr" ? "stderr" : "stdout", text: msg.line },
-                    ]);
-                    break;
-
-                case "EXEC_DONE":
-                    setExecRunning(false);
-                    if (msg.exitCode !== 0) {
-                        setExecLines((prev) => [
-                            ...prev,
-                            { id: ++execSeq, kind: "exit", text: `exit ${msg.exitCode}` },
-                        ]);
-                    }
-                    break;
-
                 case "FILES_LIST":
                     setFileList({ path: msg.path, entries: msg.entries || [] });
                     break;
@@ -204,8 +189,6 @@ export function useBrioSocket(token) {
         setScreenshot(null);
         setStatsHistory([]);
         setProcesses([]);
-        setExecLines([]);
-        setExecRunning(false);
         setFileList(null);
         setFileTransfer(null);
         wsRef.current?.send(JSON.stringify({ type: "CONNECT_REQUEST", deviceId }));
@@ -243,10 +226,16 @@ export function useBrioSocket(token) {
         wsRef.current?.send(JSON.stringify({ type: "PROCESS_KILL", pid }));
     }, []);
 
-    const execCommand = useCallback((command) => {
-        setExecLines((prev) => [...prev, { id: ++execSeq, kind: "command", text: command }]);
-        setExecRunning(true);
-        wsRef.current?.send(JSON.stringify({ type: "EXEC_REQUEST", command }));
+    const sendTermInput = useCallback((arrayBuffer) => {
+        if (wsRef.current) sendTaggedBinary(wsRef.current, FRAME_TYPE_TERM_IN, arrayBuffer);
+    }, []);
+
+    const sendTermResize = useCallback((cols, rows) => {
+        wsRef.current?.send(JSON.stringify({ type: "TERM_RESIZE", cols, rows }));
+    }, []);
+
+    const onTermOutput = useCallback((handler) => {
+        termOutputHandlerRef.current = handler;
     }, []);
 
     const requestFilesList = useCallback((path) => {
@@ -297,8 +286,6 @@ export function useBrioSocket(token) {
         authError,
         statsHistory,
         processes,
-        execLines,
-        execRunning,
         fileList,
         fileTransfer,
         requestConnect,
@@ -309,7 +296,9 @@ export function useBrioSocket(token) {
         requestScreenshot,
         requestProcessList,
         killProcess,
-        execCommand,
+        sendTermInput,
+        sendTermResize,
+        onTermOutput,
         requestFilesList,
         downloadFile,
         uploadFile,

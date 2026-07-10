@@ -39,9 +39,9 @@ export default function CommandCenter({
     screenshot,
     statsHistory,
     processes,
-    execLines,
-    execRunning,
-    execCommand,
+    sendTermInput,
+    sendTermResize,
+    onTermOutput,
     fileList,
     fileTransfer,
     requestFilesList,
@@ -143,9 +143,9 @@ export default function CommandCenter({
 
                 {tab === "terminal" && (
                     <Terminal
-                        execLines={execLines}
-                        execRunning={execRunning}
-                        execCommand={execCommand}
+                        sendTermInput={sendTermInput}
+                        sendTermResize={sendTermResize}
+                        onTermOutput={onTermOutput}
                     />
                 )}
 

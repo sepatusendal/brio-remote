@@ -1,3 +1,5 @@
+// Brio Remote — relay server
+// Made by Wira Mode Pohon
 import express from "express";
 import http from "http";
 import cors from "cors";

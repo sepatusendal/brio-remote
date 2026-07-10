@@ -218,14 +218,14 @@ export class BrioSocket {
                         break;
                     }
 
-                    case "EXEC_REQUEST": {
+                    case "TERM_RESIZE": {
 
                         if (ws.role !== "viewer") return;
 
                         const deviceId = sessionsByViewer.get(ws.viewerId);
                         const agentWs = deviceId && agentSockets.get(deviceId);
 
-                        if (agentWs) safeSend(agentWs, { type: "EXEC_REQUEST", command: data.command });
+                        if (agentWs) safeSend(agentWs, { type: "TERM_RESIZE", cols: data.cols, rows: data.rows });
                         break;
                     }
 
@@ -248,8 +248,6 @@ export class BrioSocket {
                     case "STATS":
                     case "PROCESS_LIST":
                     case "PROCESS_KILL_RESULT":
-                    case "EXEC_OUTPUT":
-                    case "EXEC_DONE":
                     case "FILES_LIST":
                     case "FILE_DOWNLOAD_START":
                     case "FILE_OP_RESULT": {

@@ -1,3 +1,5 @@
+// Brio Remote — device agent
+// Made by Wira Mode Pohon
 package main
 
 import (
@@ -34,6 +36,8 @@ const (
 	frameTypeScreenshot byte = 0x02
 	frameTypeFileDown   byte = 0x03
 	frameTypeFileUp     byte = 0x04
+	frameTypeTermOut    byte = 0x05 // agent -> viewer, raw pty output
+	frameTypeTermIn     byte = 0x06 // viewer -> agent, raw keystrokes
 )
 
 // safeConn wraps a websocket.Conn with a mutex, since gorilla/websocket
@@ -113,14 +117,23 @@ func main() {
 
 				tag, payload := msg[0], msg[1:]
 
-				if tag == frameTypeFileUp && pendingUploadPath != "" {
-					err := files.Write(pendingUploadPath, payload)
-					if err != nil {
-						conn.writeJSON(map[string]any{"type": "FILE_OP_RESULT", "ok": false, "error": err.Error()})
-					} else {
-						conn.writeJSON(map[string]any{"type": "FILE_OP_RESULT", "ok": true})
+				switch tag {
+
+				case frameTypeFileUp:
+					if pendingUploadPath != "" {
+						err := files.Write(pendingUploadPath, payload)
+						if err != nil {
+							conn.writeJSON(map[string]any{"type": "FILE_OP_RESULT", "ok": false, "error": err.Error()})
+						} else {
+							conn.writeJSON(map[string]any{"type": "FILE_OP_RESULT", "ok": true})
+						}
+						pendingUploadPath = ""
 					}
-					pendingUploadPath = ""
+
+				case frameTypeTermIn:
+					if termShell != nil {
+						termShell.Write(payload)
+					}
 				}
 
 				continue
@@ -141,14 +154,9 @@ func main() {
 					go statsLoop(conn, stopStats)
 				}
 				if termShell == nil {
-					sh, err := shell.New(
-						func(stream, line string) {
-							conn.writeJSON(map[string]any{"type": "EXEC_OUTPUT", "stream": stream, "line": line})
-						},
-						func(exitCode int) {
-							conn.writeJSON(map[string]any{"type": "EXEC_DONE", "exitCode": exitCode})
-						},
-					)
+					sh, err := shell.New(func(data []byte) {
+						conn.writeBinary(frameTypeTermOut, data)
+					})
 					if err != nil {
 						log.Println("shell start error:", err)
 					} else {
@@ -217,15 +225,11 @@ func main() {
 				}
 				sendProcessList(conn)
 
-			case "EXEC_REQUEST":
-				command, _ := cmd["command"].(string)
-				if command == "" || termShell == nil {
-					continue
-				}
-				if err := termShell.Run(command); err != nil {
-					log.Println("exec error:", err)
-					conn.writeJSON(map[string]any{"type": "EXEC_OUTPUT", "stream": "stderr", "line": "brio: failed to run command: " + err.Error()})
-					conn.writeJSON(map[string]any{"type": "EXEC_DONE", "exitCode": -1})
+			case "TERM_RESIZE":
+				colsF, _ := cmd["cols"].(float64)
+				rowsF, _ := cmd["rows"].(float64)
+				if termShell != nil && colsF > 0 && rowsF > 0 {
+					termShell.Resize(int(colsF), int(rowsF))
 				}
 
 			case "FILES_LIST_REQUEST":
