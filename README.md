@@ -1,8 +1,8 @@
-# Brio Remote — Milestone 3: Screen Share & Remote Control
+# Brio Remote — BOENGKOES BOSHH!!
 
 **Made by Wira Mode Pohon**
 
-An AnyDesk-style remote access tool: a Go agent runs on the target machine,
+tools kereen pokoknya : pake Go agent runs on the target machine,
 a Node/Express + WebSocket server relays sessions, and a React dashboard
 lets a viewer watch and control a connected device.
 
