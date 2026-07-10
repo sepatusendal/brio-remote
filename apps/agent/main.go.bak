@@ -5,13 +5,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/sepatusendal/brio-remote/agent/internal/device"
+
+	"github.com/gorilla/websocket"
 )
 
 func main() {
 
-	log.Println("Brio Agent v0.3")
+	log.Println("Brio Agent v0.2")
 
 	info := device.New()
 
@@ -28,45 +29,16 @@ func main() {
 
 	log.Println("Connected")
 
-	// Listen command dari server
 	go func() {
-
 		for {
-
 			_, msg, err := conn.ReadMessage()
-
 			if err != nil {
-				log.Println(err)
 				return
 			}
-
 			log.Println("SERVER:", string(msg))
-
-			var cmd map[string]any
-
-			json.Unmarshal(msg, &cmd)
-
-			if cmd["type"] == "PING" {
-
-				reply := map[string]any{
-					"type": "PONG",
-				}
-
-				data, _ := json.Marshal(reply)
-
-				conn.WriteMessage(
-					websocket.TextMessage,
-					data,
-				)
-
-				log.Println("PONG SENT")
-			}
-
 		}
-
 	}()
 
-	// Heartbeat
 	for {
 
 		payload := map[string]any{
