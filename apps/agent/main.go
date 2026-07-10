@@ -11,6 +11,7 @@ import (
 	"github.com/sepatusendal/brio-remote/agent/internal/capture"
 	"github.com/sepatusendal/brio-remote/agent/internal/control"
 	"github.com/sepatusendal/brio-remote/agent/internal/device"
+	"github.com/sepatusendal/brio-remote/agent/internal/system"
 )
 
 const (
@@ -18,9 +19,18 @@ const (
 	jpegQuality = 55
 )
 
+// Binary frames are prefixed with a 1-byte type tag so the dashboard can
+// tell a continuous stream frame apart from a one-off screenshot, even
+// though the server relays both as opaque binary blobs.
+const (
+	frameTypeStream     byte = 0x01
+	frameTypeScreenshot byte = 0x02
+)
+
 // safeConn wraps a websocket.Conn with a mutex, since gorilla/websocket
 // connections do not support concurrent writes from multiple goroutines.
-// We write from both the heartbeat loop and the frame-streaming loop.
+// We write from the heartbeat loop, the stream loop, and one-off
+// screenshot replies.
 type safeConn struct {
 	conn *websocket.Conn
 	mu   sync.Mutex
@@ -32,15 +42,15 @@ func (s *safeConn) writeJSON(v any) error {
 	return s.conn.WriteJSON(v)
 }
 
-func (s *safeConn) writeBinary(b []byte) error {
+func (s *safeConn) writeBinary(tag byte, payload []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.conn.WriteMessage(websocket.BinaryMessage, b)
+	return s.conn.WriteMessage(websocket.BinaryMessage, append([]byte{tag}, payload...))
 }
 
 func main() {
 
-	log.Println("Brio Agent v0.4")
+	log.Println("Brio Agent v0.5")
 
 	serverURL := os.Getenv("BRIO_SERVER_URL")
 	if serverURL == "" {
@@ -48,7 +58,10 @@ func main() {
 	}
 
 	info := device.New()
+	sysInfo := system.GetInfo() // cached once; CPU model doesn't change at runtime
+
 	log.Println("DeviceID:", info.DeviceID)
+	log.Println("CPU:", sysInfo.CPUModel)
 
 	rawConn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
@@ -84,18 +97,43 @@ func main() {
 			switch cmd["type"] {
 
 			case "SESSION_START":
-				if !streaming {
-					streaming = true
-					stopStream = make(chan struct{})
-					go streamLoop(conn, stopStream)
-					log.Println("🎥 Session started, streaming...")
-				}
+				// A viewer opened the Command Center for this device.
+				// Nothing to do yet beyond logging — screenshot/terminal/
+				// etc. requests are handled independently below.
+				log.Println("🖥️  Command Center session opened")
 
 			case "SESSION_STOP":
 				if streaming {
 					streaming = false
 					close(stopStream)
-					log.Println("⏹️  Session stopped")
+				}
+				log.Println("🖥️  Command Center session closed")
+
+			case "STREAM_START":
+				if !streaming {
+					streaming = true
+					stopStream = make(chan struct{})
+					go streamLoop(conn, stopStream)
+					log.Println("🎥 Live stream started")
+				}
+
+			case "STREAM_STOP":
+				if streaming {
+					streaming = false
+					close(stopStream)
+					log.Println("⏹️  Live stream stopped")
+				}
+
+			case "SCREENSHOT_REQUEST":
+				frame, err := capture.JPEG(80) // higher quality for a single still
+				if err != nil {
+					log.Println("screenshot error:", err)
+					continue
+				}
+				if err := conn.writeBinary(frameTypeScreenshot, frame); err != nil {
+					log.Println("screenshot send error:", err)
+				} else {
+					log.Println("📷 Screenshot sent")
 				}
 
 			case "INPUT":
@@ -127,6 +165,7 @@ func main() {
 			"hostname":  info.Hostname,
 			"os":        info.OS,
 			"arch":      info.Arch,
+			"cpuModel":  sysInfo.CPUModel,
 			"timestamp": time.Now().Unix(),
 		}
 
@@ -139,9 +178,10 @@ func main() {
 	}
 }
 
-// streamLoop captures the screen at streamFPS and pushes JPEG frames over
-// the connection until stop is closed. It runs in its own goroutine, only
-// while a viewer session is active, so idle agents cost near-zero bandwidth.
+// streamLoop captures the screen at streamFPS and pushes tagged JPEG
+// frames over the connection until stop is closed. It only runs while the
+// viewer has the Screen tab open, so an idle Command Center session costs
+// near-zero bandwidth.
 func streamLoop(conn *safeConn, stop chan struct{}) {
 
 	interval := time.Second / time.Duration(streamFPS)
@@ -162,7 +202,7 @@ func streamLoop(conn *safeConn, stop chan struct{}) {
 				continue
 			}
 
-			if err := conn.writeBinary(frame); err != nil {
+			if err := conn.writeBinary(frameTypeStream, frame); err != nil {
 				log.Println("frame send error:", err)
 				return
 			}

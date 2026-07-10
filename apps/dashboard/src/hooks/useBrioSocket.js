@@ -2,16 +2,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3000";
 
+// Must match the tag bytes the Go agent prefixes onto binary frames.
+const FRAME_TYPE_STREAM = 0x01;
+const FRAME_TYPE_SCREENSHOT = 0x02;
+
+let logSeq = 0;
+
 export function useBrioSocket() {
 
     const wsRef = useRef(null);
-    const frameHandlerRef = useRef(null);
+    const streamHandlerRef = useRef(null);
 
     const [connected, setConnected] = useState(false);
     const [viewerId, setViewerId] = useState(null);
     const [devices, setDevices] = useState([]);
     // session: null | { deviceId, status: "connecting" | "active" | "rejected", reason? }
     const [session, setSession] = useState(null);
+    const [activityLog, setActivityLog] = useState([]);
+    const [screenshot, setScreenshot] = useState(null); // object URL of last screenshot
+
+    const pushLog = useCallback((label) => {
+        setActivityLog((prev) => [
+            { id: ++logSeq, ts: Date.now(), label },
+            ...prev,
+        ].slice(0, 50));
+    }, []);
 
     useEffect(() => {
 
@@ -31,7 +46,21 @@ export function useBrioSocket() {
         ws.onmessage = (evt) => {
 
             if (evt.data instanceof ArrayBuffer) {
-                frameHandlerRef.current?.(evt.data);
+
+                const bytes = new Uint8Array(evt.data);
+                const tag = bytes[0];
+                const payload = evt.data.slice(1);
+
+                if (tag === FRAME_TYPE_STREAM) {
+                    streamHandlerRef.current?.(payload);
+                } else if (tag === FRAME_TYPE_SCREENSHOT) {
+                    const blob = new Blob([payload], { type: "image/jpeg" });
+                    setScreenshot((old) => {
+                        if (old) URL.revokeObjectURL(old);
+                        return URL.createObjectURL(blob);
+                    });
+                    pushLog("Screenshot captured");
+                }
                 return;
             }
 
@@ -54,6 +83,7 @@ export function useBrioSocket() {
 
                 case "CONNECT_ACCEPTED":
                     setSession({ deviceId: msg.deviceId, status: "active" });
+                    pushLog(`Connected to ${msg.deviceId}`);
                     break;
 
                 case "CONNECT_REJECTED":
@@ -62,6 +92,7 @@ export function useBrioSocket() {
 
                 case "SESSION_ENDED":
                     setSession(null);
+                    pushLog(msg.reason || "Session ended");
                     break;
 
                 default:
@@ -71,10 +102,12 @@ export function useBrioSocket() {
 
         return () => ws.close();
 
-    }, []);
+    }, [pushLog]);
 
     const requestConnect = useCallback((deviceId) => {
         setSession({ deviceId, status: "connecting" });
+        setActivityLog([]);
+        setScreenshot(null);
         wsRef.current?.send(JSON.stringify({ type: "CONNECT_REQUEST", deviceId }));
     }, []);
 
@@ -87,9 +120,38 @@ export function useBrioSocket() {
         wsRef.current?.send(JSON.stringify({ type: "INPUT", ...event }));
     }, []);
 
-    const onFrame = useCallback((handler) => {
-        frameHandlerRef.current = handler;
+    const startStream = useCallback(() => {
+        wsRef.current?.send(JSON.stringify({ type: "STREAM_START" }));
+        pushLog("Screen stream started");
+    }, [pushLog]);
+
+    const stopStream = useCallback(() => {
+        wsRef.current?.send(JSON.stringify({ type: "STREAM_STOP" }));
+        pushLog("Screen stream stopped");
+    }, [pushLog]);
+
+    const requestScreenshot = useCallback(() => {
+        wsRef.current?.send(JSON.stringify({ type: "SCREENSHOT_REQUEST" }));
+        pushLog("Screenshot requested");
+    }, [pushLog]);
+
+    const onStreamFrame = useCallback((handler) => {
+        streamHandlerRef.current = handler;
     }, []);
 
-    return { connected, viewerId, devices, session, requestConnect, endSession, sendInput, onFrame };
+    return {
+        connected,
+        viewerId,
+        devices,
+        session,
+        activityLog,
+        screenshot,
+        requestConnect,
+        endSession,
+        sendInput,
+        startStream,
+        stopStream,
+        requestScreenshot,
+        onStreamFrame,
+    };
 }

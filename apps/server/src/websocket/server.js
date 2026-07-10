@@ -100,6 +100,7 @@ export class BrioSocket {
                             hostname: data.hostname,
                             os: data.os,
                             arch: data.arch,
+                            cpuModel: data.cpuModel || null,
                             lastSeen: Date.now(),
                             online: true,
                             inSession: sessionsByDevice.has(data.deviceId),
@@ -159,6 +160,19 @@ export class BrioSocket {
                         const agentWs = deviceId && agentSockets.get(deviceId);
 
                         if (agentWs) safeSend(agentWs, { type: "INPUT", ...data });
+                        break;
+                    }
+
+                    case "STREAM_START":
+                    case "STREAM_STOP":
+                    case "SCREENSHOT_REQUEST": {
+
+                        if (ws.role !== "viewer") return;
+
+                        const deviceId = sessionsByViewer.get(ws.viewerId);
+                        const agentWs = deviceId && agentSockets.get(deviceId);
+
+                        if (agentWs) safeSend(agentWs, { type: data.type });
                         break;
                     }
 

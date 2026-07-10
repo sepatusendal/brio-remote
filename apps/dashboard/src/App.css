@@ -302,49 +302,152 @@
   background: transparent;
 }
 
-/* ---- Remote session view ---- */
-
-.remote-view {
-  position: fixed;
-  inset: 0;
-  background: #05070a;
-  display: flex;
-  flex-direction: column;
-  outline: none;
+@media (max-width: 640px) {
+  .console-bar { flex-direction: column; align-items: flex-start; }
+  .console-bar__stats { width: 100%; justify-content: space-between; }
 }
 
-.remote-view__toolbar {
+/* ==========================================================================
+   Enterprise device card (v2)
+   ========================================================================== */
+
+.device-card__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.device-card__icon {
+  font-size: 18px;
+}
+
+.device-card__name {
+  flex: 1;
+  font-size: 16px;
+  margin: 0;
+  word-break: break-word;
+}
+
+.device-card__badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.device-card__badge--signal { color: var(--signal); }
+.device-card__badge--caution { color: var(--caution); }
+.device-card__badge--alert { color: var(--alert); }
+
+.device-card__divider {
+  height: 1px;
+  background: var(--line);
+  margin: 12px 0;
+}
+
+.device-card__specs {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-card__specs > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.device-card__specs dt {
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.device-card__specs dd {
+  margin: 0;
+  color: var(--ink);
+  text-align: right;
+  font-family: var(--mono);
+  word-break: break-word;
+}
+
+.device-card__connect {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--pulse);
+  background: var(--pulse-dim);
+  color: var(--ink-bright);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.device-card__connect:hover:not(:disabled) {
+  background: var(--pulse);
+  color: #0a0d12;
+}
+
+.device-card__connect:active:not(:disabled) { transform: scale(0.98); }
+
+.device-card__connect:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--line);
+  background: transparent;
+}
+
+/* ==========================================================================
+   Command Center (Sprint 1)
+   ========================================================================== */
+
+.command-center {
+  position: fixed;
+  inset: 0;
+  background: var(--void);
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 18px;
-  background: var(--panel);
+  padding: 14px 24px;
   border-bottom: 1px solid var(--line);
-  color: var(--ink-bright);
+  background: var(--panel);
 }
 
-.remote-view__identity {
+.cc-header__identity {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-family: var(--mono);
-  font-size: 13px;
+  gap: 12px;
 }
 
-.remote-view__hud {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--signal);
-  letter-spacing: 0.02em;
+.cc-header__icon { font-size: 22px; }
+
+.cc-header__identity h2 {
+  font-size: 17px;
+  margin: 0 0 2px;
 }
 
-.remote-view__hud-sep {
+.cc-header__identity code {
+  font-family: var(--mono);
+  font-size: 11px;
   color: var(--ink-dim);
-  margin: 0 6px;
 }
 
-.remote-view__disconnect {
+.cc-header__disconnect {
   padding: 7px 16px;
   border-radius: 7px;
   border: 1px solid rgba(255, 107, 107, 0.4);
@@ -355,28 +458,226 @@
   transition: background 0.15s ease;
 }
 
-.remote-view__disconnect:hover {
-  background: var(--alert);
-  color: #0a0d12;
+.cc-header__disconnect:hover { background: var(--alert); color: #0a0d12; }
+
+.cc-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
 }
 
-.remote-view__stage {
+.cc-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-dim);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.cc-tab__icon { font-size: 13px; }
+
+.cc-tab:hover { color: var(--ink); }
+
+.cc-tab--active {
+  color: var(--ink-bright);
+  border-bottom-color: var(--pulse);
+}
+
+.cc-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.cc-overview {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cc-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.cc-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.cc-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  margin: 0 0 14px;
+}
+
+.cc-panel__row .cc-panel__title { margin: 0; }
+
+.cc-panel__hint {
+  color: var(--ink-dim);
+  font-size: 13px;
+  margin: 0;
+}
+
+.cc-specs {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.cc-specs dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-dim);
+  margin-bottom: 2px;
+}
+
+.cc-specs dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-bright);
+  word-break: break-word;
+}
+
+.cc-action {
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--pulse);
+  background: var(--pulse-dim);
+  color: var(--ink-bright);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cc-action:hover { background: var(--pulse); color: #0a0d12; }
+
+.cc-screenshot {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.cc-panel--log { max-height: 260px; }
+
+.cc-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cc-log li {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.cc-log__time {
+  font-family: var(--mono);
+  color: var(--ink-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+  width: 60px;
+}
+
+/* ---- Coming soon placeholder ---- */
+
+.coming-soon {
+  max-width: 480px;
+  margin: 60px auto;
+  text-align: center;
+}
+
+.coming-soon__tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--caution);
+  margin: 0 0 10px;
+}
+
+.coming-soon h3 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.coming-soon p:last-child {
+  color: var(--ink-dim);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ---- Screen panel (Sprint 1 Screen tab) ---- */
+
+.screen-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  margin: -24px;
+  background: #05070a;
+}
+
+.screen-panel__hud {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--signal);
+  border-bottom: 1px solid var(--line);
+}
+
+.screen-panel__hud-sep { color: var(--ink-dim); margin: 0 4px; }
+
+.screen-panel__stage {
   position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  min-height: 400px;
 }
 
-.remote-view__canvas {
+.screen-panel__canvas {
   max-width: 100%;
   max-height: 100%;
   cursor: crosshair;
   image-rendering: pixelated;
 }
 
-.remote-view__scanline {
+.screen-panel__scanline {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -391,6 +692,5 @@
 }
 
 @media (max-width: 640px) {
-  .console-bar { flex-direction: column; align-items: flex-start; }
-  .console-bar__stats { width: 100%; justify-content: space-between; }
+  .cc-specs { grid-template-columns: 1fr; }
 }

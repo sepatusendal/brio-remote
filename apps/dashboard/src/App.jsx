@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useBrioSocket } from "./hooks/useBrioSocket";
 import DeviceCard from "./components/DeviceCard";
-import RemoteView from "./components/RemoteView";
+import CommandCenter from "./components/CommandCenter";
 import "./App.css";
 
 export default function App() {
@@ -10,10 +10,15 @@ export default function App() {
         connected,
         devices,
         session,
+        activityLog,
+        screenshot,
         requestConnect,
         endSession,
         sendInput,
-        onFrame,
+        startStream,
+        stopStream,
+        requestScreenshot,
+        onStreamFrame,
     } = useBrioSocket();
 
     const [query, setQuery] = useState("");
@@ -29,7 +34,6 @@ export default function App() {
                 (d.os || "").toLowerCase().includes(q)
             );
 
-        // Online devices first, most recently seen first.
         return [...list].sort((a, b) => {
             if (a.online !== b.online) return a.online ? -1 : 1;
             return (b.lastSeen || 0) - (a.lastSeen || 0);
@@ -39,12 +43,19 @@ export default function App() {
     const onlineCount = devices.filter((d) => d.online).length;
 
     if (session?.status === "active") {
+        const device = devices.find((d) => d.deviceId === session.deviceId) || { deviceId: session.deviceId };
+
         return (
             <div className="view-transition">
-                <RemoteView
-                    deviceId={session.deviceId}
+                <CommandCenter
+                    device={device}
+                    activityLog={activityLog}
+                    screenshot={screenshot}
                     sendInput={sendInput}
-                    onFrame={onFrame}
+                    onStreamFrame={onStreamFrame}
+                    startStream={startStream}
+                    stopStream={stopStream}
+                    requestScreenshot={requestScreenshot}
                     onClose={endSession}
                 />
             </div>
