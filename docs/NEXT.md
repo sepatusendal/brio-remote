@@ -48,6 +48,19 @@
   all interfaces by default (`server.host: true`) so it's reachable over
   the tailnet.
 
+- **Client deployment tooling** — `apps/agent/build.sh` for native
+  builds, `.github/workflows/build-agent.yml` for cross-platform builds
+  on real OS-native CI runners (needed because robotgo's cgo dependency
+  makes true cross-compilation unreliable), a launchd installer for
+  macOS auto-start (`apps/agent/deploy/macos/`), and a build-time
+  `-ldflags -X main.defaultServerURL=...` hook so distributed binaries
+  need zero client-side config. See `docs/DEPLOY_CLIENT.md`.
+
+- **Windows + Linux auto-start installers** — `apps/agent/deploy/windows/install-windows.ps1`
+  (Task Scheduler, restart-on-crash) and `apps/agent/deploy/linux/install-linux.sh`
+  (`systemd --user`, restart-on-crash, optional lingering). Same idea as
+  the macOS launchd installer from before.
+
 ## Next up — in priority order
 
 1. **Postgres persistence**
@@ -61,8 +74,6 @@
    access later)**
    - Reverse proxy (Caddy) terminating TLS, proxying `wss://`
    - `apps/server/Dockerfile` is ready; add docker-compose with Postgres
-   - Agent auto-start / installer per OS (launchd/systemd/Windows service)
-     — useful even for the Tailscale setup, so the agent survives reboots
 
 3. **File transfer chunking**
    - Stream large files in chunks with a progress bar instead of

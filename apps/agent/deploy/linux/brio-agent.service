@@ -1,0 +1,14 @@
+[Unit]
+Description=Brio Remote Agent (by Wira Mode Pohon)
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/brio-agent
+Restart=always
+RestartSec=5
+# Adjust if the target's X display isn't :0 (rare on single-user desktops,
+# but possible). install-linux.sh will remind you to check this.
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=default.target

@@ -65,4 +65,11 @@ internet. This is the recommended way to reach Brio from your phone or
 another network, given how much access the Terminal/File Manager tabs
 grant.
 
+## Deploying the agent to a client's machine
+
+See [`docs/DEPLOY_CLIENT.md`](docs/DEPLOY_CLIENT.md) — building a
+standalone binary (no Go required on their end), getting them on your
+Tailscale network, and auto-starting the agent on macOS. **Read the
+consent section first** — this is real remote-access software.
+
 See `docs/NEXT.md` for the roadmap.

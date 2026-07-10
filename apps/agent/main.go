@@ -21,6 +21,12 @@ import (
 	"github.com/sepatusendal/brio-remote/agent/internal/system"
 )
 
+// defaultServerURL can be baked in at build time via:
+//   go build -ldflags "-X main.defaultServerURL=wss://your-tailscale-ip:3000"
+// so a binary handed to a client needs zero configuration. Falls back to
+// the BRIO_SERVER_URL env var, then to localhost for local dev.
+var defaultServerURL string
+
 const (
 	streamFPS    = 12
 	jpegQuality  = 55
@@ -66,6 +72,9 @@ func main() {
 	log.Println("Brio Agent v0.6")
 
 	serverURL := os.Getenv("BRIO_SERVER_URL")
+	if serverURL == "" {
+		serverURL = defaultServerURL
+	}
 	if serverURL == "" {
 		serverURL = "ws://localhost:3000"
 	}
