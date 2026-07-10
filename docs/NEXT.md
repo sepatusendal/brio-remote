@@ -57,29 +57,52 @@
   need zero client-side config. See `docs/DEPLOY_CLIENT.md`.
 
 - **Windows + Linux auto-start installers** — `apps/agent/deploy/windows/install-windows.ps1`
-  (Task Scheduler, restart-on-crash) and `apps/agent/deploy/linux/install-linux.sh`
-  (`systemd --user`, restart-on-crash, optional lingering). Same idea as
-  the macOS launchd installer from before.
+  (Task Scheduler, restart-on-crash, auto Defender exclusion when run
+  elevated) and `apps/agent/deploy/linux/install-linux.sh`
+  (`systemd --user`, restart-on-crash, optional lingering).
+
+- **`scripts/build-remote.sh`** — triggers the GitHub Actions build,
+  waits, and downloads the binary in one command (no browser needed).
+
+- **In-process reconnect with backoff** — the agent used to just crash
+  and rely on the OS service manager to restart it on any dropped
+  connection (network blip, laptop sleep/wake), which for Windows Task
+  Scheduler meant up to a 1-minute gap. Now `main.go` has an outer
+  reconnect loop with exponential backoff (1s → 30s cap) that retries in
+  the same process; the OS-level restart is now just a last-resort safety
+  net, not the normal reconnect path.
+
+- **Proper GUI installers** — Windows now gets a real Inno Setup wizard
+  (`apps/agent/deploy/windows/brio-agent.iss`, auto-compiled by the
+  GitHub Actions workflow into `BrioAgentSetup.exe`) instead of a raw
+  binary + PowerShell command. macOS gets a double-click
+  `Install Brio Agent.command` wrapper. Both still hit the expected OS
+  security prompts (SmartScreen / Gatekeeper) since neither is
+  code-signed yet — documented in `docs/DEPLOY_CLIENT.md`.
 
 ## Next up — in priority order
 
-1. **Postgres persistence**
+1. **Linux GUI installer** — still terminal-only; lower priority since
+   Linux desktop users are more likely to be comfortable with a terminal
+   anyway, but flag it if that assumption's wrong for your clients
+
+2. **Postgres persistence**
    - Wire `database/schema.sql` up via `services/device.service.js` /
      `services/auth.service.js` (currently stubs)
    - Given Terminal/File Manager access is now real RCE, an audit trail
      (who ran what command, when, from which viewer) is worth prioritizing
      alongside this — currently nothing survives a server restart
 
-2. **Deploy hardening (only if you actually want public, non-Tailscale
+3. **Deploy hardening (only if you actually want public, non-Tailscale
    access later)**
    - Reverse proxy (Caddy) terminating TLS, proxying `wss://`
    - `apps/server/Dockerfile` is ready; add docker-compose with Postgres
 
-3. **File transfer chunking**
+4. **File transfer chunking**
    - Stream large files in chunks with a progress bar instead of
      buffering the whole thing in memory on both ends
 
-4. **Later: WebRTC migration for the video path**
+5. **Later: WebRTC migration for the video path**
    - Only worth it once relay bandwidth/latency is an actual bottleneck
    - Needs a TURN server (e.g. coturn) for NAT traversal
 

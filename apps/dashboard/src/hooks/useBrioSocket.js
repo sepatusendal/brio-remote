@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3000";
+// If VITE_WS_URL isn't set, default to same-origin — this is what makes
+// the built dashboard "just work" with zero config once the server is
+// serving it directly (see apps/server/src/index.js), whatever host/IP
+// it's reached at (localhost, LAN IP, Tailscale IP, etc).
+function resolveWsUrl() {
+    if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+    if (typeof window === "undefined") return "ws://localhost:3000";
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}`;
+}
+
+const WS_URL = resolveWsUrl();
 
 // Must match the tag bytes the Go agent prefixes onto binary frames.
 const FRAME_TYPE_STREAM = 0x01;

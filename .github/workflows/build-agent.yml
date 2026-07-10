@@ -59,7 +59,26 @@ jobs:
           fi
           CGO_ENABLED=1 go build -ldflags "$LDFLAGS" -o "../../${{ matrix.output }}" .
 
+      # Windows gets a proper GUI installer on top of the raw .exe — a
+      # real Next/Next/Install/Finish wizard the client double-clicks,
+      # instead of needing to open PowerShell. GitHub's windows-latest
+      # runners ship with Inno Setup preinstalled.
+      - name: Build Windows installer (Inno Setup)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Copy-Item "${{ matrix.output }}" "apps\agent\deploy\windows\brio-agent.exe"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "apps\agent\deploy\windows\brio-agent.iss"
+          Copy-Item "apps\agent\deploy\windows\output\BrioAgentSetup.exe" "BrioAgentSetup.exe"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output }}
           path: ${{ matrix.output }}
+
+      - name: Upload Windows installer
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrioAgentSetup.exe
+          path: BrioAgentSetup.exe

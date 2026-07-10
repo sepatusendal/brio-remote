@@ -32,6 +32,10 @@ const (
 	jpegQuality  = 55
 	statsPeriod  = 3 * time.Second
 	procListSize = 25
+
+	baseReconnectDelay = 1 * time.Second
+	maxReconnectDelay  = 30 * time.Second
+	heartbeatInterval  = 5 * time.Second
 )
 
 // Binary frames are prefixed with a 1-byte type tag so the dashboard can
@@ -69,7 +73,7 @@ func (s *safeConn) writeBinary(tag byte, payload []byte) error {
 
 func main() {
 
-	log.Println("Brio Agent v0.6")
+	log.Println("Brio Agent v0.7")
 
 	serverURL := os.Getenv("BRIO_SERVER_URL")
 	if serverURL == "" {
@@ -85,14 +89,49 @@ func main() {
 	log.Println("DeviceID:", info.DeviceID)
 	log.Println("CPU:", sysInfo.CPUModel)
 
+	// Outer reconnect loop: runs for the lifetime of the process. Every
+	// dropped connection (network blip, laptop sleep/wake, server
+	// restart, whatever) falls back out to here and retries with
+	// exponential backoff, capped at maxReconnectDelay — all within this
+	// same process, no reliance on the OS service manager restarting a
+	// crashed process. That still happens as a last-resort safety net
+	// (see the launchd/Task Scheduler/systemd installers), but day-to-day
+	// reconnects should never need it.
+	delay := baseReconnectDelay
+
+	for {
+		err := runSession(serverURL, info, sysInfo, &delay)
+		if err != nil {
+			log.Println("session ended:", err)
+		}
+
+		log.Printf("reconnecting in %s...\n", delay)
+		time.Sleep(delay)
+
+		delay *= 2
+		if delay > maxReconnectDelay {
+			delay = maxReconnectDelay
+		}
+	}
+}
+
+// runSession dials the server, runs the full agent session (heartbeat,
+// command handling, streaming, terminal, files) until the connection
+// drops for any reason, then returns. All session-scoped state
+// (streaming, termShell, etc.) lives here so each reconnect starts clean.
+func runSession(serverURL string, info device.Device, sysInfo system.Info, delay *time.Duration) error {
+
 	rawConn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer rawConn.Close()
 
-	conn := &safeConn{conn: rawConn}
+	// Reset backoff now that we're actually connected — a brief blip
+	// shouldn't leave us waiting 30s for the *next* one.
+	*delay = baseReconnectDelay
 
+	conn := &safeConn{conn: rawConn}
 	log.Println("Connected to", serverURL)
 
 	var (
@@ -107,6 +146,22 @@ func main() {
 		pendingUploadPath string
 	)
 
+	// Make sure nothing from this session (stream goroutine, stats
+	// goroutine, pty shell) outlives the connection it belongs to.
+	defer func() {
+		if streaming {
+			close(stopStream)
+		}
+		if statsRunning {
+			close(stopStats)
+		}
+		if termShell != nil {
+			termShell.Close()
+		}
+	}()
+
+	readErr := make(chan error, 1)
+
 	// Listen for commands/session control/input from the server.
 	go func() {
 
@@ -114,7 +169,7 @@ func main() {
 
 			msgType, msg, err := rawConn.ReadMessage()
 			if err != nil {
-				log.Println("read error:", err)
+				readErr <- err
 				return
 			}
 
@@ -313,28 +368,37 @@ func main() {
 
 	}()
 
-	// Heartbeat loop (main goroutine).
-	ticker := time.NewTicker(5 * time.Second)
+	// Heartbeat loop. Selects on both the ticker and the read-goroutine's
+	// error channel, so a dropped connection is noticed immediately
+	// instead of waiting up to heartbeatInterval for the next failed
+	// write to discover it.
+	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
 
-		payload := map[string]any{
-			"type":      "HEARTBEAT",
-			"deviceId":  info.DeviceID,
-			"hostname":  info.Hostname,
-			"os":        info.OS,
-			"arch":      info.Arch,
-			"cpuModel":  sysInfo.CPUModel,
-			"timestamp": time.Now().Unix(),
+		case err := <-readErr:
+			return err
+
+		case <-ticker.C:
+
+			payload := map[string]any{
+				"type":      "HEARTBEAT",
+				"deviceId":  info.DeviceID,
+				"hostname":  info.Hostname,
+				"os":        info.OS,
+				"arch":      info.Arch,
+				"cpuModel":  sysInfo.CPUModel,
+				"timestamp": time.Now().Unix(),
+			}
+
+			if err := conn.writeJSON(payload); err != nil {
+				return err
+			}
+
+			log.Println("Heartbeat")
 		}
-
-		if err := conn.writeJSON(payload); err != nil {
-			log.Println("heartbeat error:", err)
-			return
-		}
-
-		log.Println("Heartbeat")
 	}
 }
 

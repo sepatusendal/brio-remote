@@ -1,9 +1,24 @@
+# Node
 node_modules/
 dist/
-.env
-apps/dashboard/dist/
-apps/agent/brio-agent
-apps/agent/brio-agent.exe
-.DS_Store
-__MACOSX/
+build/
 
+# Go
+*.exe
+*.out
+
+# Env
+.env
+.env.*
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Backup
+*.bak

@@ -65,6 +65,12 @@ internet. This is the recommended way to reach Brio from your phone or
 another network, given how much access the Terminal/File Manager tabs
 grant.
 
+## Running it day-to-day without juggling terminals
+
+See [`docs/SEAMLESS_DEPLOY.md`](docs/SEAMLESS_DEPLOY.md) — one-time setup
+that makes the server auto-serve the dashboard on a single port/URL and
+auto-starts both server + agent in the background via launchd.
+
 ## Deploying the agent to a client's machine
 
 See [`docs/DEPLOY_CLIENT.md`](docs/DEPLOY_CLIENT.md) — building a

@@ -1,8 +1,14 @@
 # Deploying to a client's laptop
 
-This covers getting the **agent** running on someone else's machine (a
-client you're remotely supporting), separate from your own dev/testing
-setup.
+Short version, once you've pushed to GitHub and set up Tailscale:
+
+```bash
+cd scripts
+./build-remote.sh windows ws://100.84.122.109:3000   # your Tailscale IP
+```
+
+Send the resulting `BrioAgentSetup.exe` to the client — they double-click
+it, click through the wizard, done. Details and the "why" below.
 
 ## ⚠️ Get consent first
 
@@ -14,114 +20,75 @@ you do it. Installing remote-access software on someone's computer
 without their knowledge is a real legal problem in most places, not just
 bad practice.
 
-## Architecture recap
+## One-time setup (per repo, not per client)
 
-```
-[Client's laptop]                [Wherever the server runs]         [Your laptop]
-   brio-agent    <---- WS ---->      brio-server        <---- WS ---->   dashboard
-   (background)                    (relay + auth)                    (your browser)
-```
+1. Push this repo to GitHub if you haven't:
+   ```bash
+   cd brio-remote
+   git init && git add . && git commit -m "brio remote"
+   gh repo create brio-remote --private --source=. --push
+   ```
+2. Install the GitHub CLI if you don't have it: `brew install gh`, then
+   `gh auth login` once.
+3. Both you and the client are on the same Tailscale network (see
+   `docs/TAILSCALE.md`).
 
-The agent needs to be able to reach the server. The dashboard (your
-browser) also needs to reach the server. Easiest way to satisfy both
-without exposing anything to the public internet: put the server on
-**your** machine (or wherever's convenient) and have the client's laptop
-join your **Tailscale** network (see `docs/TAILSCALE.md` first).
+## Per-client deployment (the actual fast path)
 
-## Step 1 — Get the agent binary for the client's OS
-
-**If the client is also on macOS** (same architecture as your dev
-machine, e.g. Apple Silicon):
+**1. Build + download** (from your machine, no browser needed):
 ```bash
-cd apps/agent
-./build.sh
-# produces dist/brio-agent-darwin-arm64
+cd scripts
+./build-remote.sh windows ws://100.84.122.109:3000
+./build-remote.sh linux   ws://100.84.122.109:3000
+./build-remote.sh macos   ws://100.84.122.109:3000
 ```
+Replace the IP with your own `tailscale ip -4`. Binary lands in
+`downloaded/`. This bakes the server URL in — the client's binary needs
+zero config.
 
-**If the client is on Windows, Linux, or a different Mac architecture**
-(Intel vs Apple Silicon): don't cross-compile — it's unreliable because
-of cgo (robotgo needs a real C toolchain for the target OS). Instead use
-the GitHub Actions workflow:
+**2. Send the installer to the client:**
 
-1. Push this repo to GitHub (or push just a tag)
-2. Actions tab → "Build agent binaries" → Run workflow
-3. Optionally fill in `server_url` (your Tailscale IP, e.g.
-   `ws://100.101.102.103:3000`) so the binary needs zero config on the
-   client's end
-4. Download the artifact for their OS from the finished run
+- **Windows**: `build-remote.sh windows` now also produces
+  `downloaded/BrioAgentSetup.exe` — a real installer with a GUI wizard
+  (Next → Next → Install → Finish). Send *that* instead of the raw
+  binary; the client just double-clicks it, no PowerShell needed. It
+  still needs to run elevated (installer prompts for admin automatically)
+  so the Defender exclusion step can happen without any manual digging
+  through Windows Security.
+  ⚠️ SmartScreen may still show a one-time "unrecognized app" warning —
+  client clicks **More info → Run anyway**. A code-signing certificate
+  (~$70–400/yr) removes this; same thing AnyDesk/TeamViewer pay for.
 
-## Step 2 — Get the client on your Tailscale network
+- **macOS**: send the binary *and* the whole `apps/agent/deploy/macos/`
+  folder together (needs `install-macos.sh`, the `.plist`, and
+  `Install Brio Agent.command` all in the same folder). Client
+  double-clicks **`Install Brio Agent.command`** — it finds the binary
+  automatically and runs the installer, no Terminal typing needed.
+  ⚠️ Gatekeeper will likely block the first double-click ("cannot be
+  opened because it is from an unidentified developer") since it's
+  unsigned — client right-clicks the file → **Open** instead of double-
+  clicking, which shows an "Open anyway" option double-click doesn't.
 
-They install Tailscale ([tailscale.com](https://tailscale.com), free)
-and log into an account you control or invite them to (Tailscale
-supports inviting other people's devices into your tailnet, or just use
-a shared account for a personal client). Once connected, their laptop
-can reach your server's Tailscale IP directly — no port forwarding, no
-public exposure.
+- **Linux**: send the binary + `install-linux.sh`, no GUI wrapper yet —
+  client runs `./install-linux.sh ./brio-agent-linux-amd64` in a
+  terminal. Flag it if this needs the same double-click treatment.
 
-## Step 3 — Install the agent on their machine
-
-**macOS** (auto-starts on login, restarts if it crashes):
+**3. Client runs the installer** (details above — for Windows/macOS this
+is now genuinely one double-click, not a terminal command). On macOS,
+first run also prompts for **Screen Recording** and **Accessibility**
+permissions (System Settings → Privacy & Security) — the client needs to
+approve both, then the agent needs a restart to pick them up:
 ```bash
-cd apps/agent/deploy/macos
-./install-macos.sh /path/to/brio-agent-darwin-arm64
-```
-First run will prompt for **Screen Recording** and **Accessibility**
-permissions (System Settings → Privacy & Security) — they need to
-approve both, then you restart the service once (the installer prints
-the exact command).
-
-**Windows** (auto-starts at logon via Task Scheduler, restarts on crash):
-```powershell
-cd apps/agent/deploy/windows
-.\install-windows.ps1 -BinaryPath "C:\path\to\brio-agent-windows-amd64.exe"
+launchctl unload ~/Library/LaunchAgents/com.wiramodepohon.brio-agent.plist
+launchctl load ~/Library/LaunchAgents/com.wiramodepohon.brio-agent.plist
 ```
 
-⚠️ **Windows Defender will likely flag this binary.** This isn't really
-about the file being unsigned — it's that screen capture + keyboard/mouse
-injection + remote shell + file access is *exactly* what a remote-access
-trojan looks like behaviorally, so both SmartScreen (reputation warning)
-and real-time Defender (can actually quarantine the file) are primed to
-be suspicious of it. Two separate problems, two fixes:
+**4. Verify** — their device shows up on your dashboard within ~5
+seconds (heartbeat interval). Connect and confirm you see their screen.
 
-1. **SmartScreen warning on first run** — client clicks "More info" →
-   "Run anyway". One-time, doesn't need admin.
+## Why not just cross-compile from your Mac?
 
-2. **Defender quarantining/deleting the file** (more disruptive) — add
-   an exclusion so Defender leaves it alone:
-   `Windows Security → Virus & threat protection → Manage settings →
-   Add or remove exclusions → Add an exclusion → File` → select
-   `brio-agent.exe`. Do this *before* running the installer, or Defender
-   may delete the binary before the Scheduled Task ever gets to run it.
-
-3. **If you're distributing this to real clients regularly**, the actual
-   fix is a code-signing certificate (~$70–400/year depending on vendor;
-   EV certificates get SmartScreen reputation almost immediately, cheaper
-   standard certs build it up over time). This is what commercial tools
-   like AnyDesk/TeamViewer do — it's a real cost of doing this
-   professionally, not optional polish.
-
-**Linux** (auto-starts at login via `systemd --user`, restarts on crash):
-```bash
-cd apps/agent/deploy/linux
-./install-linux.sh /path/to/brio-agent-linux-amd64
-```
-Screen capture needs an active graphical session (X11/Xwayland) — if the
-target's `DISPLAY` isn't `:0`, the script tells you exactly which file to
-edit. The install script also tries to enable "lingering" (needs sudo)
-so the background service can start even before login, though the
-screen-capture parts still need someone actually logged in graphically.
-
-## Step 4 — Verify
-
-Open your dashboard, the client's device should show up online. Connect
-and confirm you can see their screen.
-
-## Notes on the baked-in server URL
-
-If you built with `BRIO_SERVER_URL` set (via `build.sh` env var or the
-GitHub Actions `server_url` input), the client's binary already knows
-where to connect — they don't need to configure anything. If you didn't
-bake it in, you'll need to set the `BRIO_SERVER_URL` environment variable
-before running it, which isn't realistic for a non-technical client — so
-for real client deployments, always bake in the URL at build time.
+The agent uses cgo (`robotgo`, for mouse/keyboard control), and cgo
+cross-compilation is unreliable — you'd need a matching C toolchain for
+the target OS. `build-remote.sh` sidesteps this entirely by building on
+GitHub's own native Windows/Linux/macOS runners.

@@ -3,8 +3,12 @@
 import express from "express";
 import http from "http";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { BrioSocket, devices } from "./websocket/server.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DASHBOARD_DIST = path.join(__dirname, "..", "..", "dashboard", "dist");
 
 const app = express();
 
@@ -32,6 +36,20 @@ app.get("/devices",(req,res)=>{
 // NOTE: session negotiation (connect/control/streaming) now happens entirely
 // over the WebSocket protocol (VIEWER_HELLO / CONNECT_REQUEST / INPUT). The
 // old REST /connect endpoint only ever sent a bare PING and is removed.
+
+// Serve the dashboard's production build (run `npm run build` in
+// apps/dashboard first) so the whole app is one process on one port —
+// no separate `npm run dev` needed for day-to-day use. The dashboard's
+// WS client defaults to same-origin, so this just works with zero config
+// once both are running from the same host/port.
+app.use(express.static(DASHBOARD_DIST));
+
+app.get(/(.*)/, (req, res, next) => {
+    if (req.path.startsWith("/health") || req.path.startsWith("/devices")) return next();
+    res.sendFile(path.join(DASHBOARD_DIST, "index.html"), (err) => {
+        if (err) next();
+    });
+});
 
 
 const server = http.createServer(app);
