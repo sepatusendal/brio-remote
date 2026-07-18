@@ -5,7 +5,7 @@ import http from "http";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import { BrioSocket, devices } from "./websocket/server.js";
+import { ACCESS_TOKEN, BrioSocket, devices } from "./websocket/server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_DIST = path.join(__dirname, "..", "..", "dashboard", "dist");
@@ -25,7 +25,15 @@ app.get("/health",(req,res)=>{
 });
 
 
+// Device metadata (hostnames, OS, CPU model) is only for authenticated
+// operators — same token the dashboard uses to open a viewer session.
 app.get("/devices",(req,res)=>{
+
+    const token = req.get("Authorization")?.replace(/^Bearer\s+/i, "") || req.query.token;
+
+    if (token !== ACCESS_TOKEN) {
+        return res.status(401).json({ error: "Invalid or missing access token" });
+    }
 
     res.json(
         Array.from(devices.values())
