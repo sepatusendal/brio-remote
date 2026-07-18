@@ -9,8 +9,9 @@
 # runners for each platform).
 #
 # Usage:
-#   ./build.sh                 # build for this machine
-#   BRIO_SERVER_URL=wss://... ./build.sh   # bake in a default server URL
+#   BRIO_TOKEN=... ./build.sh                              # bake in the access token (required — the
+#                                                            # server rejects any agent without it)
+#   BRIO_SERVER_URL=wss://... BRIO_TOKEN=... ./build.sh    # also bake in a default server URL
 
 set -euo pipefail
 
@@ -33,6 +34,13 @@ LDFLAGS=""
 if [ -n "${BRIO_SERVER_URL:-}" ]; then
   echo "Baking in default server URL: $BRIO_SERVER_URL"
   LDFLAGS="-X main.defaultServerURL=$BRIO_SERVER_URL"
+fi
+if [ -n "${BRIO_TOKEN:-}" ]; then
+  echo "Baking in access token"
+  LDFLAGS="$LDFLAGS -X main.defaultAccessToken=$BRIO_TOKEN"
+else
+  echo "⚠️  BRIO_TOKEN not set — this binary will refuse to start until BRIO_TOKEN"
+  echo "   is set in its environment. Set BRIO_TOKEN when building to bake it in instead."
 fi
 
 CGO_ENABLED=1 go build -ldflags "$LDFLAGS" -o "$OUT" .

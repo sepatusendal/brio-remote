@@ -27,6 +27,12 @@ import (
 // the BRIO_SERVER_URL env var, then to localhost for local dev.
 var defaultServerURL string
 
+// defaultAccessToken can be baked in the same way via
+// -ldflags "-X main.defaultAccessToken=...". Falls back to the BRIO_TOKEN
+// env var. The server rejects any HEARTBEAT that doesn't present the token
+// it was started with, so this must match.
+var defaultAccessToken string
+
 const (
 	streamFPS    = 12
 	jpegQuality  = 55
@@ -83,6 +89,14 @@ func main() {
 		serverURL = "ws://localhost:3000"
 	}
 
+	accessToken := os.Getenv("BRIO_TOKEN")
+	if accessToken == "" {
+		accessToken = defaultAccessToken
+	}
+	if accessToken == "" {
+		log.Fatal("BRIO_TOKEN is not set — this agent's HEARTBEAT will be rejected by the server. Set the BRIO_TOKEN env var to the token printed by the server on startup.")
+	}
+
 	info := device.New()
 	sysInfo := system.GetInfo() // cached once; CPU model doesn't change at runtime
 
@@ -100,7 +114,7 @@ func main() {
 	delay := baseReconnectDelay
 
 	for {
-		err := runSession(serverURL, info, sysInfo, &delay)
+		err := runSession(serverURL, accessToken, info, sysInfo, &delay)
 		if err != nil {
 			log.Println("session ended:", err)
 		}
@@ -119,7 +133,7 @@ func main() {
 // command handling, streaming, terminal, files) until the connection
 // drops for any reason, then returns. All session-scoped state
 // (streaming, termShell, etc.) lives here so each reconnect starts clean.
-func runSession(serverURL string, info device.Device, sysInfo system.Info, delay *time.Duration) error {
+func runSession(serverURL, accessToken string, info device.Device, sysInfo system.Info, delay *time.Duration) error {
 
 	rawConn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
@@ -362,6 +376,9 @@ func runSession(serverURL string, info device.Device, sysInfo system.Info, delay
 				if cmd["action"] == "PING" {
 					log.Println("🏓 PONG")
 				}
+
+			case "AUTH_FAILED":
+				log.Println("❌ server rejected our BRIO_TOKEN — fix the env var on this machine to match the server's token")
 			}
 
 		}
@@ -385,6 +402,7 @@ func runSession(serverURL string, info device.Device, sysInfo system.Info, delay
 
 			payload := map[string]any{
 				"type":      "HEARTBEAT",
+				"token":     accessToken,
 				"deviceId":  info.DeviceID,
 				"hostname":  info.Hostname,
 				"os":        info.OS,
