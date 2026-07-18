@@ -1,10 +1,12 @@
 import { WebSocketServer } from "ws";
 import { randomUUID, randomBytes } from "crypto";
 
-// Operator access token. Only the dashboard (viewer) needs to present this —
-// agents don't, because running an agent on a machine already requires
-// access to that machine. The real security boundary is "who can open a
-// control session and send input/commands", which is the viewer side.
+// Shared access token. Both the dashboard (viewer) and every agent must
+// present this on connect. Agents need it too: the server is reachable
+// over the network, so without a check here anyone who can open a
+// WebSocket to it could send a HEARTBEAT claiming an existing device's ID
+// and hijack that device's control session (relay maps by deviceId with
+// no other identity check).
 export const ACCESS_TOKEN = process.env.BRIO_TOKEN || randomBytes(9).toString("base64url");
 
 if (!process.env.BRIO_TOKEN) {
@@ -113,6 +115,21 @@ export class BrioSocket {
                 switch (data.type) {
 
                     case "HEARTBEAT": {
+
+                        if (data.token !== ACCESS_TOKEN) {
+                            safeSend(ws, { type: "AUTH_FAILED", reason: "Invalid access token" });
+                            ws.close();
+                            return;
+                        }
+
+                        // A live connection already owns this deviceId — close it
+                        // rather than silently letting the new one steal the slot,
+                        // so a stale/duplicate agent process can't linger relayed
+                        // into a session it no longer owns.
+                        const existing = agentSockets.get(data.deviceId);
+                        if (existing && existing !== ws && existing.readyState === existing.OPEN) {
+                            existing.close();
+                        }
 
                         ws.role = "agent";
                         ws.deviceId = data.deviceId;

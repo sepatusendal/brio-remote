@@ -15,6 +15,10 @@ on:
         description: "Server URL to bake into the binary (e.g. wss://100.x.y.z:3000). Leave empty to require BRIO_SERVER_URL at runtime."
         required: false
         default: ""
+      access_token:
+        description: "Access token to bake into the binary (must match the server's BRIO_TOKEN). Leave empty to require BRIO_TOKEN at runtime."
+        required: false
+        default: ""
   push:
     tags:
       - "v*"
@@ -56,6 +60,9 @@ jobs:
           LDFLAGS=""
           if [ -n "${{ github.event.inputs.server_url }}" ]; then
             LDFLAGS="-X main.defaultServerURL=${{ github.event.inputs.server_url }}"
+          fi
+          if [ -n "${{ github.event.inputs.access_token }}" ]; then
+            LDFLAGS="$LDFLAGS -X main.defaultAccessToken=${{ github.event.inputs.access_token }}"
           fi
           CGO_ENABLED=1 go build -ldflags "$LDFLAGS" -o "../../${{ matrix.output }}" .
 
